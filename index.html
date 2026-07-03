@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trò Chơi: Vòng Tuần Hoàn Của Nước</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #e0f7fa;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+            overflow: hidden;
+        }
+        h1 { color: #006064; }
+        #instruction {
+            font-size: 24px;
+            color: #d32f2f;
+            font-weight: bold;
+            margin-bottom: 20px;
+            min-height: 35px;
+        }
+        
+        /* MÀN HÌNH CHỜ */
+        #splash-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #e0f7fa;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 1s ease-out;
+        }
+        #splash-screen h1 { margin-bottom: 40px; font-size: 40px; }
+        #splash-animation-container {
+            position: relative; width: 250px; height: 250px; margin-bottom: 40px;
+        }
+        .splash-img {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            border-radius: 50%; object-fit: cover; border: 5px solid #00acc1;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            opacity: 0; transition: opacity 1.5s ease-in-out;
+        }
+        .splash-img.active { opacity: 1; }
+        #btn-start {
+            padding: 15px 40px; font-size: 22px; font-weight: bold;
+            background-color: #ff9800; color: white; border: none;
+            border-radius: 30px; cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: transform 0.2s, background-color 0.2s;
+            animation: pulse 2s infinite;
+        }
+        #btn-start:hover { background-color: #f57c00; transform: scale(1.05); }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+        /* GAME CHÍNH */
+        #game-container { display: none; }
+        #target-board { display: flex; justify-content: center; gap: 15px; margin-bottom: 40px; flex-wrap: wrap; }
+        .slot {
+            width: 150px; height: 150px; border: 3px dashed #0097a7; border-radius: 10px;
+            background-color: #ffffff; display: flex; align-items: center; justify-content: center;
+            font-size: 40px; color: #b2ebf2; overflow: hidden; position: relative;
+        }
+        .slot img { width: 100%; height: 100%; object-fit: cover; }
+        .slot-label {
+            position: absolute; bottom: 0; background: rgba(0, 0, 0, 0.6);
+            color: white; width: 100%; font-size: 14px; padding: 5px 0;
+        }
+        #options-board {
+            display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;
+            padding: 20px; background: #ffffff; border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 900px; margin: 0 auto;
+        }
+        .option-card {
+            width: 140px; height: 140px; cursor: pointer; border: 3px solid transparent;
+            border-radius: 10px; transition: transform 0.2s, border-color 0.2s; overflow: hidden;
+        }
+        .option-card:hover { transform: scale(1.05); border-color: #ff9800; }
+        .option-card img { width: 100%; height: 100%; object-fit: cover; }
+        .hidden { visibility: hidden; }
+        
+        #victory-screen {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.9); z-index: 1000;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+        #victory-screen h2 { font-size: 48px; color: #d32f2f; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
+        .btn-replay {
+            padding: 15px 30px; font-size: 20px; background-color: #00897b;
+            color: white; border: none; border-radius: 8px; cursor: pointer; margin-top: 20px;
+        }
+        .btn-replay:hover { background-color: #00695c; }
+    </style>
+</head>
+<body>
+
+    <div id="splash-screen">
+        <h1>Vòng Tuần Hoàn Của Nước</h1>
+        <div id="splash-animation-container"></div>
+        <button id="btn-start" onclick="startGame()">Bắt Đầu Chơi</button>
+    </div>
+
+    <div id="game-container">
+        <h1>Sắp Xếp Hiện Tượng Mưa</h1>
+        <div id="instruction">Đang tải...</div>
+        <div id="target-board">
+            <div class="slot" id="slot-0">1</div>
+            <div class="slot" id="slot-1">2</div>
+            <div class="slot" id="slot-2">3</div>
+            <div class="slot" id="slot-3">4</div>
+            <div class="slot" id="slot-4">5</div>
+        </div>
+        <div id="options-board"></div>
+    </div>
+
+    <div id="victory-screen">
+        <h2>Tuyệt vời! Bạn đã hoàn thành!</h2>
+        <button class="btn-replay" onclick="location.reload()">Chơi Lại</button>
+    </div>
+
+    <script>
+        // ==========================================
+        // BỘ TẠO ÂM THANH BẰNG CODE JAVASCRIPT (KHÔNG CẦN FILE NGOÀI)
+        // ==========================================
+        let audioCtx;
+
+        // Khởi tạo AudioContext khi người dùng tương tác lần đầu
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // Tạo tiếng "Ting" nhẹ khi click đúng
+        function playCorrectSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            osc.type = 'sine'; // Âm thanh mềm mại
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime); 
+            osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1); // Cao độ tăng vút lên
+            
+            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); // Tắt dần
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        // Tạo tiếng "Buzzer/Tèn" khi click sai
+        function playWrongSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            osc.type = 'sawtooth'; // Âm thanh rè rè như báo lỗi
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.2); // Cao độ tụt xuống
+            
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        // Tạo nhạc chiến thắng (Giai điệu tưng bừng)
+        function playVictorySound() {
+            if (!audioCtx) return;
+            const notes = [440, 554, 659, 880]; // Các nốt A4, C#5, E5, A5
+            let startTime = audioCtx.currentTime;
+            
+            notes.forEach((freq, index) => {
+                const osc = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                osc.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                osc.type = 'triangle';
+                osc.frequency.value = freq;
+                
+                gainNode.gain.setValueAtTime(0, startTime + index * 0.15);
+                gainNode.gain.linearRampToValueAtTime(0.3, startTime + index * 0.15 + 0.05);
+                gainNode.gain.linearRampToValueAtTime(0, startTime + index * 0.15 + 0.2);
+                
+                osc.start(startTime + index * 0.15);
+                osc.stop(startTime + index * 0.15 + 0.2);
+            });
+        }
+
+        // Tạo tiếng click cơ bản
+        function playClickSound() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        // ==========================================
+        // CÀI ĐẶT TRÒ CHƠI
+        // ==========================================
+        const stages = [
+             { id: 0, name: "Mặt nước (Ao hồ)", img: "ho.png" },
+            { id: 1, name: "Nước bốc hơi", img: "bochoi.png" },
+            { id: 2, name: "Mây trắng", img: "maytrang.png" },
+            { id: 3, name: "Mây đen", img: "mayden.png" },
+            { id: 4, name: "Trời mưa", img: "mua.png" }
+        ];
+
+        let currentStage = 0; 
+        let splashInterval;
+        let currentSplashIndex = 0;
+
+        const instructionEl = document.getElementById("instruction");
+        const optionsBoardEl = document.getElementById("options-board");
+
+        function initSplashScreen() {
+            const container = document.getElementById("splash-animation-container");
+            stages.forEach((stage, index) => {
+                const img = document.createElement("img");
+                img.src = stage.img;
+                img.className = "splash-img";
+                if(index === 0) img.classList.add("active");
+                container.appendChild(img);
+            });
+            const splashImages = document.querySelectorAll(".splash-img");
+            splashInterval = setInterval(() => {
+                splashImages[currentSplashIndex].classList.remove("active");
+                currentSplashIndex = (currentSplashIndex + 1) % splashImages.length;
+                splashImages[currentSplashIndex].classList.add("active");
+            }, 2500); 
+        }
+
+        function startGame() {
+            initAudio(); // Mở hệ thống âm thanh
+            playClickSound(); // Kêu tạch một cái
+
+            clearInterval(splashInterval);
+            const splashScreen = document.getElementById("splash-screen");
+            splashScreen.style.opacity = "0";
+            
+            setTimeout(() => {
+                splashScreen.style.display = "none";
+                document.body.style.overflow = "auto";
+                document.getElementById("game-container").style.display = "block";
+                initGame();
+            }, 800);
+        }
+
+        function shuffle(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        function initGame() {
+            updateInstruction();
+            const shuffledStages = shuffle([...stages]);
+
+            shuffledStages.forEach(stage => {
+                const card = document.createElement("div");
+                card.className = "option-card";
+                card.onclick = () => checkAnswer(stage.id, card, stage);
+
+                const img = document.createElement("img");
+                img.src = stage.img;
+                img.alt = stage.name;
+                img.onerror = () => { img.alt = "Chưa có hình: " + stage.img; };
+
+                card.appendChild(img);
+                optionsBoardEl.appendChild(card);
+            });
+        }
+
+        function updateInstruction() {
+            if (currentStage < stages.length) {
+                instructionEl.textContent = `Hãy chọn hình ảnh: Bước ${currentStage + 1} - ${stages[currentStage].name}`;
+            }
+        }
+
+        function checkAnswer(clickedId, cardElement, stageData) {
+            if (clickedId === currentStage) {
+                playCorrectSound(); // Gọi âm thanh ĐÚNG
+
+                const slotEl = document.getElementById(`slot-${currentStage}`);
+                slotEl.innerHTML = `<img src="${stageData.img}" alt="${stageData.name}"><div class="slot-label">${stageData.name}</div>`;
+
+                cardElement.classList.add("hidden");
+                currentStage++;
+                updateInstruction();
+
+                if (currentStage === stages.length) {
+                    showVictory();
+                }
+            } else {
+                playWrongSound(); // Gọi âm thanh SAI
+                
+                cardElement.style.transform = "translateX(-10px)";
+                setTimeout(() => cardElement.style.transform = "translateX(10px)", 50);
+                setTimeout(() => cardElement.style.transform = "translateX(0)", 100);
+            }
+        }
+
+        function showVictory() {
+            setTimeout(() => {
+                playVictorySound(); // Gọi âm nhạc CHIẾN THẮNG
+                
+                const victoryScreen = document.getElementById("victory-screen");
+                victoryScreen.style.display = "flex";
+                fireConfetti();
+                const end = Date.now() + 3 * 1000;
+                const interval = setInterval(function() {
+                    if (Date.now() > end) return clearInterval(interval);
+                    fireConfetti();
+                }, 250);
+            }, 500);
+        }
+
+        function fireConfetti() {
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, zIndex: 2000 });
+        }
+
+        window.onload = initSplashScreen;
+    </script>
+</body>
+</html>
